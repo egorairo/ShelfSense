@@ -1,114 +1,74 @@
-# TasteGraph Concierge
+# TasteGap Scout
 
-A travel chat app that turns "I'll be in Berlin Friday night, I love Radiohead and Korean BBQ" into a personalized itinerary in <30s.
+AI tool that flags products you don't sell yet but your local customers are statistically primed to buy.
 
-## Features
+## Concept
 
-- **AI-Powered Travel Assistant**: Powered by Qloo Taste AI™ for personalized recommendations
-- **Real-time Streaming**: Fast responses with streaming tool calls
-- **Personalized Recommendations**: Based on your taste preferences and travel location
-- **Modern UI**: Beautiful, responsive interface built with Tailwind CSS
-- **Affinity Scores**: See how well each recommendation matches your taste profile
+Imagine you run a small store. You already know what people bought last week — it's in your sales sheet. But what if there's cool stuff people would love, but you've never stocked it?
+
+That's where TasteGap Scout helps. It's like a magic scout telling you what's missing on your shelf.
+
+## How It Works
+
+1. **Upload your sales data** - CSV with columns: `sku_id`, `tags`, `qty`, `margin` (optional)
+2. **Set your store location** - Latitude/longitude or address
+3. **Get AI analysis** - We use Qloo's cultural taste data to find gaps
+
+The system:
+
+1. Asks Qloo: "What do people around here like?"
+2. Compares those tastes to your product list
+3. Finds gaps — things locals probably want but you don't sell yet
+
+## Example Results
+
+**Brooklyn Coffee Shop Demo:**
+
+- Add matcha soda and Japanese cookies — they fit your customers, and you're missing sales
+- Consider Korean snacks and bubble tea based on local preferences
+- Plant-based options show high local affinity
+
+## Demo
+
+Try the demo with:
+
+- **Brooklyn Coffee Shop** sample data (20 products)
+- **Brooklyn, NY** location (40.6782, -73.9442)
 
 ## Tech Stack
 
-- **Next.js 15** with App Router
-- **Vercel AI SDK 4.2+** with streaming support
-- **Qloo Taste AI™ API** for personalized recommendations
-- **TypeScript** for type safety
-- **Tailwind CSS** for styling
-- **Lucide React** for icons
+- **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS
+- **AI**: Claude Sonnet, Vercel AI SDK
+- **Data**: Qloo Taste AI API, CSV parsing with PapaParse
+- **Analysis**: Custom cosine-similarity algorithm for taste gap detection
 
-## Setup
+## Development
 
-1. **Clone the repository**
+```bash
+# Install dependencies
+npm install
 
-   ```bash
-   git clone <repository-url>
-   cd qloo
-   ```
+# Start development server
+npm run dev
 
-2. **Install dependencies**
-
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-   Create a `.env.local` file in the root directory:
-
-   ```env
-   # Qloo Taste AI™ API Configuration
-   QLOO_API_KEY=your_qloo_api_key_here
-   QLOO_API_URL=https://api.qloo.com/v1
-
-   # OpenAI Configuration for AI SDK
-   OPENAI_API_KEY=your_openai_api_key_here
-   ```
-
-4. **Run the development server**
-
-   ```bash
-   npm run dev
-   ```
-
-5. **Open your browser**
-   Navigate to [http://localhost:3000](http://localhost:3000)
-
-## Usage
-
-1. **Enter your travel preferences**: Tell the AI about your destination, timing, and preferences
-
-   - Example: "I'll be in Berlin Friday night, I love Radiohead and Korean BBQ"
-
-2. **Get personalized recommendations**: The AI will:
-
-   - Search for entities matching your preferences
-   - Generate location-specific recommendations
-   - Explain why each recommendation fits your taste profile
-
-3. **Explore recommendations**: View detailed cards with:
-   - Affinity scores showing match strength
-   - Location information
-   - Booking links (when available)
-   - Category tags
-
-## API Integration
-
-The app integrates with the Qloo Taste AI™ API through two main endpoints:
-
-- **`/search`**: Resolves user preferences to entity IDs
-- **`/recs`**: Generates personalized recommendations based on entity IDs and location
-
-## Architecture
-
-```
-src/
-├── app/
-│   ├── api/chat/route.ts     # Chat API with tool integration
-│   ├── layout.tsx            # Root layout
-│   └── page.tsx              # Main page
-├── components/
-│   ├── ChatInterface.tsx     # Main chat UI component
-│   └── RecommendationCard.tsx # Recommendation display components
-└── lib/
-    └── qloo.ts               # Qloo API integration
+# Build for production
+npm run build
 ```
 
-## Performance
+## Environment Variables
 
-- **<30s response time** guaranteed
-- **Streaming responses** for real-time updates
-- **No PII storage** - privacy-focused design
-- **Optimized tool calls** with maxSteps: 3
+```bash
+QLOO_API_KEY=your_qloo_api_key
+ANTHROPIC_API_KEY=your_anthropic_key
+```
 
-## Contributing
+## Algorithm
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+The core gap analysis uses:
 
-## License
+1. **Cultural Insights** - Qloo /v2/insights endpoint for location-based taste preferences
+2. **Affinity Calculation** - Match product tags against cultural entities with relevance weighting
+3. **Gap Detection** - Identify high-affinity categories with low inventory coverage
+4. **Revenue Projection** - Estimate weekly impact based on affinity × margin × local demand
 
-MIT License - see LICENSE file for details
+Built for the 2024 Qloo Hackathon.

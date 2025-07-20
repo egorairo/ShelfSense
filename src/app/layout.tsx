@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'TasteGraph Concierge',
-  description: 'Your AI travel assistant powered by Qloo Taste AI™',
+  title: 'TasteGap Scout',
+  description:
+    "AI tool that flags products you don't sell yet but your local customers are primed to buy",
 }
 
 export default function RootLayout({

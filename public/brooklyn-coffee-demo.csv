@@ -1,0 +1,21 @@
+sku_id,tags,qty,margin
+ESPRESSO_001,"coffee,espresso,dark roast,italian",45,2.5
+AMERICANO_002,"coffee,americano,medium roast",38,2.0
+CAPPUCCINO_003,"coffee,cappuccino,milk,foam,italian",52,3.0
+LATTE_004,"coffee,latte,milk,steamed",67,3.2
+COLD_BREW_005,"coffee,cold brew,iced,smooth",29,2.8
+CROISSANT_006,"pastry,french,butter,flaky",34,1.8
+MUFFIN_007,"pastry,blueberry,muffin,sweet",28,2.1
+BAGEL_008,"bagel,cream cheese,sesame,breakfast",41,1.5
+DANISH_009,"pastry,danish,sweet,european",19,2.4
+SCONE_010,"pastry,scone,british,tea",22,2.0
+TEA_BLACK_011,"tea,black tea,english,breakfast",15,1.8
+TEA_GREEN_012,"tea,green tea,asian,healthy",12,2.2
+TEA_HERBAL_013,"tea,herbal,chamomile,relaxing",8,2.0
+SANDWICH_014,"sandwich,turkey,lunch,deli",23,4.5
+SALAD_015,"salad,healthy,greens,vegetables",18,5.2
+COOKIE_016,"cookie,chocolate chip,sweet,dessert",31,1.2
+BROWNIE_017,"brownie,chocolate,fudgy,dessert",25,2.8
+YOGURT_018,"yogurt,greek,healthy,breakfast",14,2.3
+GRANOLA_019,"granola,nuts,healthy,breakfast",16,3.1
+WATER_020,"water,bottled,refreshing",42,0.8
