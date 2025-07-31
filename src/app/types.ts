@@ -357,6 +357,13 @@ export interface EntityProperties {
   address?: string
   phone?: string
   website?: string
+  keywords?: {name: string; count: number}[]
+  specialty_dishes?: {
+    id: string
+    name: string
+    type: string
+    weight: number
+  }[]
   [key: string]: any
 }
 
@@ -400,7 +407,12 @@ export interface InsightsResult {
     affinity: number
     explainability?: RecommendationExplainability
   }
-  tags?: string[]
+  tags?: {
+    id: string
+    name: string
+    type: string
+    weight: number
+  }[]
   external?: {
     resy?: {
       rating?: number

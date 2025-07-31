@@ -33,6 +33,7 @@ export function ChatInterface() {
   )
   const [csvUploaded, setCsvUploaded] = useState(false)
   const [locationSet, setLocationSet] = useState(false)
+  const [isFormSubmitted, setIsFormSubmitted] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const {
@@ -45,6 +46,8 @@ export function ChatInterface() {
   } = useChat({
     maxSteps: 3,
   })
+
+  console.log('🫔 messages', messages)
 
   const handleCsvUpload = (
     event: React.ChangeEvent<HTMLInputElement>
@@ -72,16 +75,16 @@ export function ChatInterface() {
         setCsvUploaded(true)
 
         // Auto-message about successful upload
-        append({
-          role: 'user',
-          content: `I've uploaded my sales data with ${
-            parsedData.length
-          } products. Here's a sample: ${JSON.stringify(
-            parsedData.slice(0, 3),
-            null,
-            2
-          )}`,
-        })
+        // append({
+        //   role: 'user',
+        //   content: `I've uploaded my sales data with ${
+        //     parsedData.length
+        //   } products. Here's a sample: ${JSON.stringify(
+        //     parsedData.slice(0, 3),
+        //     null,
+        //     2
+        //   )}`,
+        // })
       },
       error: (error) => {
         console.error('CSV parsing error:', error)
@@ -97,14 +100,14 @@ export function ChatInterface() {
       (storeLocation.latitude && storeLocation.longitude)
     ) {
       setLocationSet(true)
-      const locationStr =
-        storeLocation.address ||
-        `${storeLocation.latitude}, ${storeLocation.longitude}`
+      // const locationStr =
+      //   storeLocation.address ||
+      //   `${storeLocation.latitude}, ${storeLocation.longitude}`
 
-      append({
-        role: 'user',
-        content: `My store location is: ${locationStr}. Please analyze taste gaps for my local market.`,
-      })
+      // append({
+      //   role: 'user',
+      //   content: `My store location is: ${locationStr}. Please analyze taste gaps for my local market.`,
+      // })
     }
   }
 
@@ -149,7 +152,7 @@ export function ChatInterface() {
       </div>
 
       {/* Setup Modal */}
-      {(!csvUploaded || !locationSet) && (
+      {(!csvUploaded || !locationSet || !isFormSubmitted) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-8">
@@ -329,6 +332,7 @@ export function ChatInterface() {
                       </div>
                       <div className="flex gap-3">
                         <button
+                          type="button"
                           onClick={handleLocationSubmit}
                           disabled={
                             !storeLocation.address &&
@@ -340,6 +344,7 @@ export function ChatInterface() {
                           Set Location
                         </button>
                         <button
+                          type="button"
                           onClick={() => {
                             setStoreLocation({
                               latitude: 40.6782,
@@ -416,10 +421,43 @@ export function ChatInterface() {
                                   address: 'Brooklyn, NY',
                                 })
                                 setLocationSet(true)
+                                setIsFormSubmitted(true)
+
+                                const locationStr =
+                                  `${storeLocation.latitude}, ${storeLocation.longitude}` ||
+                                  storeLocation.address
+
+                                console.log(
+                                  'locationStr',
+                                  locationStr
+                                )
+
+                                // append({
+                                //   role: 'user',
+                                //   content: `My store location is: ${locationStr}. Please analyze taste gaps for my local market.`,
+                                // })
+
+                                // append({
+                                //   role: 'user',
+                                //   content: `I've uploaded my sales data with ${
+                                //     salesData.length
+                                //   } products. Here's a sample: ${JSON.stringify(
+                                //     salesData.slice(0, 5),
+                                //     null,
+                                //     2
+                                //   )}`,
+                                // })
 
                                 append({
                                   role: 'user',
-                                  content: `I've loaded the Brooklyn coffee shop demo with ${parsedData.length} products and set location to Brooklyn, NY. Please analyze taste gaps for my local market.`,
+                                  // content: `I've loaded the Brooklyn coffee shop demo with ${parsedData.length} products and set location to Brooklyn, NY. Please analyze taste gaps for my local market.`,
+                                  content: `My store location is: ${locationStr}. I've uploaded my sales data with ${
+                                    salesData.length
+                                  } products. Here's a sample: ${JSON.stringify(
+                                    salesData.slice(0, 5),
+                                    null,
+                                    2
+                                  )}. Please analyze taste gaps for my local market.`,
                                 })
                               },
                             })
@@ -427,7 +465,7 @@ export function ChatInterface() {
                       }}
                       className="w-full px-8 py-4 bg-gradient-to-r from-green-600 to-blue-600 text-white rounded-lg hover:from-green-700 hover:to-blue-700 flex items-center justify-center gap-3 font-semibold text-lg shadow-lg"
                     >
-                      🚀 Try Complete Brooklyn Coffee Shop Demo
+                      🚀 Try To Analyze Taste Gaps
                     </button>
                     <p className="text-gray-500 text-sm mt-3">
                       Sets up everything and starts analysis in one
@@ -459,6 +497,7 @@ export function ChatInterface() {
           )}
 
           {messages.length === 0 &&
+            !isFormSubmitted &&
             (!csvUploaded || !locationSet) && (
               <div className="text-center py-12">
                 <Bot className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -611,7 +650,7 @@ export function ChatInterface() {
       </div>
 
       {/* Input */}
-      {csvUploaded && locationSet && (
+      {csvUploaded && locationSet && isFormSubmitted && (
         <div className="bg-white border-t border-gray-200 p-4">
           <div className="max-w-6xl mx-auto">
             <form onSubmit={handleSubmit} className="flex gap-2">

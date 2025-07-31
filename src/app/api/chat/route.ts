@@ -10,7 +10,10 @@ import {
   EntityType,
   InsightsRequest,
   InsightsResponse,
+  InsightsResult,
 } from '@/app/types'
+import {extractCulturalSignals} from '@/utils/extractCulturalSignals'
+import {convertCategoriesToEntities} from '@/utils/convertCategoriesToEntities'
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30
@@ -51,11 +54,286 @@ export interface TasteGap {
   categories: string[]
 }
 
+// Add validation result interface for better typing
+export interface ValidationResult {
+  validation_score: number
+  issues: string[]
+  is_good: boolean
+}
+
+export interface ValidatedGap extends TasteGap {
+  validation_score: number
+  issues: string[]
+  is_good: boolean
+}
+
+// Business logic rules with proper typing
+interface StoreRules {
+  excellent: string[]
+  good: string[]
+  avoid: string[]
+}
+
+interface LocationRule {
+  avoid: string[]
+  reason: string
+  prioritize?: string[]
+}
+
+interface DemographicRule {
+  prioritize: string[]
+  avoid?: string[]
+  price_tolerance?: string
+  price_sensitivity?: string
+  margin_opportunity?: string
+  volume_over_margin?: boolean
+}
+
+interface ComplexityRule {
+  characteristics: string[]
+  score_boost?: number
+  score_neutral?: number
+  score_penalty?: number
+}
+
+const BUSINESS_RULES = {
+  // Store type compatibility matrix
+  storeCompatibility: {
+    coffee_shop: {
+      excellent: [
+        'beverages',
+        'pastry',
+        'asian_beverages',
+        'wellness_drinks',
+        'premium_snacks',
+      ],
+      good: ['healthy_snacks', 'artisan_products', 'plant_based'],
+      avoid: [
+        'alcohol',
+        'perishables_without_refrigeration',
+        'large_items',
+      ],
+    } as StoreRules,
+    convenience_store: {
+      excellent: [
+        'quick_snacks',
+        'beverages',
+        'essentials',
+        'impulse_items',
+      ],
+      good: ['frozen_foods', 'personal_care', 'small_electronics'],
+      avoid: ['luxury_items', 'specialty_equipment', 'perishables'],
+    } as StoreRules,
+    bookstore: {
+      excellent: [
+        'beverages',
+        'artisan_gifts',
+        'stationery',
+        'premium_snacks',
+      ],
+      good: [
+        'wellness_products',
+        'small_electronics',
+        'seasonal_items',
+      ],
+      avoid: ['perishables', 'alcohol', 'loud_products'],
+    } as StoreRules,
+  } as Record<string, StoreRules>,
+
+  // Competition and location rules
+  locationConflicts: {
+    near_museum: {
+      avoid: ['souvenirs', 'tourist_items', 'postcards', 'magnets'],
+      reason: 'Direct competition with museum gift shop',
+    } as LocationRule,
+    near_gym: {
+      avoid: ['unhealthy_snacks', 'sugary_drinks'],
+      prioritize: [
+        'protein_products',
+        'wellness_drinks',
+        'healthy_snacks',
+      ],
+      reason: 'Health-conscious demographic near gym',
+    } as LocationRule,
+    near_school: {
+      avoid: ['alcohol', 'adult_items'],
+      prioritize: [
+        'healthy_snacks',
+        'educational_items',
+        'affordable_items',
+      ],
+      reason: 'Family-friendly area near school',
+    } as LocationRule,
+  } as Record<string, LocationRule>,
+
+  // Demographic targeting
+  demographics: {
+    high_income_area: {
+      prioritize: ['premium', 'organic', 'artisan', 'specialty'],
+      price_tolerance: 'high',
+      margin_opportunity: 'excellent',
+    } as DemographicRule,
+    family_area: {
+      prioritize: ['family_friendly', 'bulk_items', 'practical'],
+      avoid: ['adult_only', 'luxury_non_essential'],
+      price_sensitivity: 'medium',
+    } as DemographicRule,
+    student_area: {
+      prioritize: [
+        'affordable',
+        'convenient',
+        'energy_drinks',
+        'study_snacks',
+      ],
+      price_sensitivity: 'high',
+      volume_over_margin: true,
+    } as DemographicRule,
+  } as Record<string, DemographicRule>,
+
+  // Implementation complexity scoring
+  complexity: {
+    easy: {
+      characteristics: [
+        'shelf_stable',
+        'no_special_storage',
+        'established_suppliers',
+      ],
+      score_boost: 0.2,
+    } as ComplexityRule,
+    medium: {
+      characteristics: [
+        'requires_refrigeration',
+        'seasonal',
+        'moderate_investment',
+      ],
+      score_neutral: 0,
+    } as ComplexityRule,
+    hard: {
+      characteristics: [
+        'requires_licensing',
+        'high_investment',
+        'complex_logistics',
+      ],
+      score_penalty: -0.3,
+    } as ComplexityRule,
+  } as Record<string, ComplexityRule>,
+}
+
+// Enhanced compatibility checking function with proper typing
+function assessBusinessViability(
+  gap: TasteGap,
+  storeType: string,
+  locationContext: string,
+  demographics?: string
+): {
+  viability_score: number
+  issues: string[]
+  is_viable: boolean
+} {
+  let viabilityScore = gap.affinity_score
+  const issues: string[] = [] // ← Теперь НУЖЕН для сбора проблем
+
+  // Normalize store type to match our rules
+  const normalizedStoreType = storeType
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+
+  // Check store type compatibility
+  const storeRules =
+    BUSINESS_RULES.storeCompatibility[normalizedStoreType]
+  if (storeRules) {
+    gap.categories.forEach((cat) => {
+      const lowerCat = cat.toLowerCase()
+
+      if (
+        storeRules.excellent.some((exc) => lowerCat.includes(exc))
+      ) {
+        viabilityScore *= 1.3
+      } else if (
+        storeRules.good.some((good) => lowerCat.includes(good))
+      ) {
+        viabilityScore *= 1.1
+      } else if (
+        storeRules.avoid.some((avoid) => lowerCat.includes(avoid))
+      ) {
+        issues.push(`${cat} not suitable for ${storeType}`) // ← ИСПОЛЬЗУЕМ issues
+        viabilityScore *= 0.2
+      }
+    })
+  }
+
+  // Check location conflicts
+  Object.entries(BUSINESS_RULES.locationConflicts).forEach(
+    ([location, rules]) => {
+      const locationKey = location.replace('near_', '')
+      if (locationContext.toLowerCase().includes(locationKey)) {
+        const hasConflict = gap.categories.some((cat) =>
+          rules.avoid.some((avoid) =>
+            cat.toLowerCase().includes(avoid)
+          )
+        )
+
+        if (hasConflict) {
+          issues.push(rules.reason) // ← ИСПОЛЬЗУЕМ issues
+          viabilityScore *= 0.1
+        }
+      }
+    }
+  )
+
+  return {
+    viability_score: Math.max(0, Math.min(1, viabilityScore)),
+    issues, // ← Возвращаем ЗАПОЛНЕННЫЙ массив проблем
+    is_viable: viabilityScore > 0.6 && issues.length === 0,
+  }
+}
+
+// Fixed checkStoreCompatibility function with proper typing
+function checkStoreCompatibility(
+  gap: TasteGap,
+  storeType: string
+): string | null {
+  const normalizedStoreType = storeType
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+  const storeRules =
+    BUSINESS_RULES.storeCompatibility[normalizedStoreType]
+
+  if (!storeRules) {
+    return null // No rules for this store type, allow it
+  }
+
+  // Check if any category matches allowed categories
+  const hasCompatibleCategory = gap.categories.some((cat) => {
+    const lowerCat = cat.toLowerCase()
+    return (
+      storeRules.excellent.some((exc) => lowerCat.includes(exc)) ||
+      storeRules.good.some((good) => lowerCat.includes(good))
+    )
+  })
+
+  // Check if any category is explicitly avoided
+  const hasAvoidedCategory = gap.categories.some((cat) => {
+    const lowerCat = cat.toLowerCase()
+    return storeRules.avoid.some((avoid) => lowerCat.includes(avoid))
+  })
+
+  if (hasAvoidedCategory) {
+    return `Product "${gap.suggested_item}" contains avoided categories for ${storeType}`
+  }
+
+  if (!hasCompatibleCategory) {
+    return `Product "${gap.suggested_item}" doesn't match ${storeType} categories`
+  }
+
+  return null
+}
+
 // Get cultural insights for location using Qloo API
 export async function getQlooInsights(
   latitude: number,
   longitude: number
-): Promise<TasteEntity[]> {
+): Promise<InsightsResult[]> {
   console.log(
     `🔍 getQlooInsights called with lat: ${latitude}, lng: ${longitude}`
   )
@@ -93,7 +371,7 @@ export async function getQlooInsights(
     },
   ]
 
-  const result = []
+  const result: InsightsResult[] = []
 
   for (const approach of approaches) {
     try {
@@ -101,7 +379,7 @@ export async function getQlooInsights(
 
       let response: {data: InsightsResponse}
       const headers = {
-        'X-Api-Key': QLOO_API_KEY,
+        'X-Api-Key': QLOO_API_KEY || '',
         'Content-Type': 'application/json',
       }
 
@@ -127,7 +405,12 @@ export async function getQlooInsights(
 
       console.log(`✅ ${approach.name} successful!`)
 
-      const data = response.data.results.entities
+      const data = response.data.results?.entities
+
+      result.push(...data)
+      break // Exit loop on first success
+
+      // TODO: remove this (нам нужны сырые данные)
       console.log(data)
       console.log('📋 Raw response data:')
       console.log(data?.map((e) => e.name))
@@ -142,11 +425,12 @@ export async function getQlooInsights(
         continue
       }
 
-      const entities = rawEntities.map((entity) => ({
+      const entities: TasteEntity[] = rawEntities.map((entity) => ({
         name: entity.name || 'Unknown',
         relevance: entity.query?.affinity || 0.5,
         type: entity.subtype || 'Unknown',
-        categories: entity.tags || [],
+        categories:
+          entity.tags?.map((tag: any) => tag.name || tag.id) || [],
       }))
 
       console.log(
@@ -154,7 +438,8 @@ export async function getQlooInsights(
       )
       console.log(JSON.stringify(entities.slice(0, 3), null, 2)) // Log first 3
 
-      result.push(...entities)
+      // result.push(...entities)
+      break // Exit loop on first success
     } catch (error: any) {
       console.error(`❌ ${approach.name} failed:`, error.message)
       if (error.response) {
@@ -164,9 +449,12 @@ export async function getQlooInsights(
         )
         console.error('📋 Error response data:', error.response.data)
       }
-
-      throw error
+      // Continue to next approach instead of throwing
     }
+  }
+
+  if (result.length === 0) {
+    console.log('⚠️ All approaches failed, returning empty array')
   }
 
   return result
@@ -216,7 +504,7 @@ function analyzeGaps(
   salesData: SalesData[],
   tasteEntities: TasteEntity[]
 ): TasteGap[] {
-  // Create sold SKU map
+  // Create sold SKU map for O(1) lookup
   const soldMap = Object.fromEntries(
     salesData.map((s) => [s.sku_id, s.qty])
   )
@@ -252,7 +540,7 @@ function analyzeGaps(
     if (relatedSkus.length < 3 || soldRelated.length === 0) {
       const avgMargin =
         enriched.reduce((sum, sku) => sum + (sku.margin || 1), 0) /
-        enriched.length
+        Math.max(enriched.length, 1) // Prevent division by zero
       const predictedWeeklyImpact = entity.relevance * avgMargin * 25 // Rough estimate
 
       gaps.push({
@@ -315,17 +603,20 @@ export async function POST(req: Request) {
 
           try {
             console.log('📡 Calling getQlooInsights...')
-            const insights = await getQlooInsights(
+            const rawInsights = await getQlooInsights(
               latitude,
               longitude
             )
+
             console.log(
-              `✅ getQlooInsights returned ${insights.length} insights`
+              `✅ getQlooInsights returned ${rawInsights.length} insights`
             )
 
+            const culturalData = extractCulturalSignals(rawInsights)
+
             const result = {
-              insights,
-              message: `Found ${insights.length} cultural taste insights for location ${latitude}, ${longitude}`,
+              culturalData,
+              message: `Found ${culturalData.places.length} cultural taste insights for location ${latitude}, ${longitude}`,
             }
 
             console.log(
@@ -345,7 +636,7 @@ export async function POST(req: Request) {
 
       findTasteGaps: tool({
         description:
-          'Analyze taste gaps between local preferences and current inventory',
+          'Analyze taste gaps between recommended product categories and current inventory',
         parameters: z.object({
           salesData: z
             .array(
@@ -357,48 +648,54 @@ export async function POST(req: Request) {
               })
             )
             .describe('Array of sales data with SKU info'),
-          tasteEntities: z
-            .array(
-              z.object({
-                name: z.string(),
-                relevance: z.number(),
-                type: z.string().optional(),
-                categories: z.array(z.string()).optional(),
-              })
-            )
+          productCategories: z
+            .array(z.string())
             .describe(
-              'Cultural taste entities from location analysis'
+              'Specific product categories recommended by cultural analysis'
             ),
         }),
-        execute: async ({salesData, tasteEntities}) => {
+        execute: async ({salesData, productCategories}) => {
           console.log(`🔍 findTasteGaps tool called`)
           console.log(`📊 Sales data: ${salesData.length} items`)
           console.log(
-            `🎭 Taste entities: ${tasteEntities.length} entities`
+            `🎯 Product categories: ${productCategories.length}`
           )
           console.log(
-            '📋 Sample sales data:',
-            JSON.stringify(salesData.slice(0, 2), null, 2)
-          )
-          console.log(
-            '📋 Sample taste entities:',
-            JSON.stringify(tasteEntities.slice(0, 2), null, 2)
+            `📋 Categories: ${productCategories.join(', ')}`
           )
 
           try {
-            console.log('🧮 Running gap analysis...')
+            // Конвертируем productCategories в TasteEntity format
+            const tasteEntities =
+              convertCategoriesToEntities(productCategories)
+
+            console.log(
+              `✨ Converted to ${tasteEntities.length} TasteEntity objects`
+            )
+            console.log(
+              `📋 Sample entities:`,
+              tasteEntities.slice(0, 2)
+            )
+
+            // Используем ВСЮ СТАРУЮ ЛОГИКУ analyzeGaps()
+            console.log(
+              '🧮 Running analyzeGaps with converted entities...'
+            )
             const gaps = analyzeGaps(salesData, tasteEntities)
+
             console.log(
               `✅ Gap analysis completed: ${gaps.length} gaps found`
             )
-            console.log(
-              '📋 Sample gaps:',
-              JSON.stringify(gaps.slice(0, 2), null, 2)
-            )
+            console.log(`📋 Sample gaps:`, gaps.slice(0, 2))
 
             const result = {
               gaps,
-              message: `Found ${gaps.length} potential product gaps to explore`,
+              message: `Found ${gaps.length} potential product gaps based on cultural analysis`,
+              analysis: {
+                categoriesAnalyzed: productCategories.length,
+                entitiesGenerated: tasteEntities.length,
+                gapsIdentified: gaps.length,
+              },
             }
 
             console.log(
@@ -411,39 +708,251 @@ export async function POST(req: Request) {
               error: 'Failed to analyze gaps',
               message:
                 'Error analyzing taste gaps. Please check your data format.',
+              gaps: [],
             }
           }
         },
       }),
+
+      validateRecommendations: tool({
+        description:
+          'Validate if recommendations make business sense for the store type and location',
+        parameters: z.object({
+          gaps: z.array(
+            z.object({
+              suggested_item: z.string(),
+              categories: z.array(z.string()),
+              affinity_score: z.number(),
+              matching_rationale: z.string(),
+              taste_gap_score: z.number(),
+              predicted_margin_impact: z.string(),
+            })
+          ),
+          storeType: z
+            .string()
+            .describe(
+              'Type of store: coffee shop, convenience store, bookstore, etc'
+            ),
+          locationContext: z
+            .string()
+            .describe(
+              'What is near the store location (museum, gym, school, etc)'
+            ),
+        }),
+        execute: async ({gaps, storeType, locationContext}) => {
+          console.log(
+            `🔍 Validating ${gaps.length} recommendations for ${storeType} near ${locationContext}`
+          )
+
+          // Просто используем assessBusinessViability для каждого gap
+          const validated: ValidatedGap[] = gaps.map((gap) => {
+            const viability = assessBusinessViability(
+              gap as TasteGap,
+              storeType,
+              locationContext
+            )
+
+            return {
+              ...gap,
+              validation_score: viability.viability_score,
+              issues: viability.issues,
+              is_good: viability.is_viable,
+            } as ValidatedGap
+          })
+
+          const goodGaps = validated.filter((v) => v.is_good)
+
+          return {
+            validated_recommendations: validated,
+            good_count: goodGaps.length,
+            total_count: gaps.length,
+            needs_improvement: goodGaps.length < 3,
+            summary: `${goodGaps.length} out of ${gaps.length} recommendations passed validation`,
+            validation_details: validated.map((v) => ({
+              item: v.suggested_item,
+              score: v.validation_score,
+              issues: v.issues,
+            })),
+          }
+        },
+      }),
+
+      refineRecommendations: tool({
+        description:
+          'Improve recommendations based on validation issues and business logic',
+        parameters: z.object({
+          originalGaps: z.array(
+            z.object({
+              suggested_item: z.string(),
+              categories: z.array(z.string()),
+              affinity_score: z.number(),
+              matching_rationale: z.string(),
+              taste_gap_score: z.number(),
+              predicted_margin_impact: z.string(),
+            })
+          ),
+          validationIssues: z.array(z.string()),
+          storeType: z.string(),
+          locationContext: z.string(),
+          improvementCriteria: z
+            .string()
+            .describe(
+              'How to improve the recommendations based on validation feedback'
+            ),
+        }),
+        execute: async ({
+          originalGaps,
+          validationIssues,
+          storeType,
+          locationContext,
+          improvementCriteria,
+        }) => {
+          console.log(
+            `🔧 Refining recommendations based on: ${improvementCriteria}`
+          )
+
+          // Filter out problematic recommendations based on validation issues
+          const filteredGaps = originalGaps.filter((gap) => {
+            // Re-assess each gap with enhanced business logic
+            const viability = assessBusinessViability(
+              gap as TasteGap,
+              storeType,
+              locationContext
+            )
+
+            return viability.is_viable
+          })
+
+          // Re-rank remaining gaps by business viability and affinity
+          const rerankedGaps = filteredGaps
+            .sort((a, b) => {
+              // Sort by affinity score primarily, then by taste gap score
+              if (
+                Math.abs(a.affinity_score - b.affinity_score) > 0.1
+              ) {
+                return b.affinity_score - a.affinity_score
+              }
+              return b.taste_gap_score - a.taste_gap_score
+            })
+            .slice(0, 8) // Take top 8 after filtering and ranking
+
+          return {
+            refined_gaps: rerankedGaps,
+            removed_count: originalGaps.length - rerankedGaps.length,
+            refinement_applied: improvementCriteria,
+            summary: `Filtered out ${
+              originalGaps.length - rerankedGaps.length
+            } problematic recommendations, kept ${
+              rerankedGaps.length
+            } viable options`,
+            improvement_notes: `Applied business logic for ${storeType} in ${locationContext} context`,
+          }
+        },
+      }),
+
+      mapCulturalToProducts: tool({
+        description:
+          'Convert cultural insights from local area into specific product recommendations for the store',
+        parameters: z.object({
+          culturalData: z.object({
+            places: z.array(
+              z.object({
+                name: z.string(),
+                type: z.string(),
+                description: z.string().optional(),
+                price_level: z.number(),
+                business_rating: z.number().optional(),
+                popularity: z.number().optional(),
+                topKeywords: z.array(z.string()),
+                specialties: z.array(z.string()),
+                categories: z.array(z.string()),
+                neighborhood: z.string().optional(),
+              })
+            ),
+            context: z.object({
+              neighborhood: z.string(),
+              averagePriceLevel: z.number(),
+              totalPlaces: z.number(),
+              placeTypes: z.array(z.string()),
+            }),
+          }),
+          storeType: z
+            .string()
+            .describe(
+              'Type of store: coffee shop, convenience store, etc'
+            ),
+        }),
+        execute: async ({culturalData, storeType}) => {
+          console.log(
+            `🎯 mapCulturalToProducts called for ${storeType} in ${culturalData.context.neighborhood}`
+          )
+          console.log(
+            `📊 Analyzing ${culturalData.places.length} places, avg price: ${culturalData.context.averagePriceLevel}`
+          )
+
+          return {
+            culturalData,
+            storeType,
+            summary: `Cultural analysis ready for ${storeType} in ${culturalData.context.neighborhood}`,
+            placesAnalyzed: culturalData.places.length,
+            readyForMapping: true,
+          }
+        },
+      }),
     },
-    system: `You are TasteGap Scout, an AI assistant that helps small retailers discover products their local customers want but they don't currently sell.
+    system: `You are TasteGap Scout, an autonomous AI agent that helps retailers discover profitable product gaps through multi-step analysis.
 
-Your process:
-1. When users provide store location (lat/long or address), use analyzeLocation to get local taste insights
-2. When users provide sales data + location insights, use findTasteGaps to identify product opportunities
-3. Present findings clearly with actionable recommendations
+    MANDATORY WORKFLOW - Execute steps sequentially:
+    1. analyzeLocation - Get cultural taste insights for store location
+    2. mapCulturalToProducts - Convert cultural insights into specific product categories
+    3. findTasteGaps - Identify gaps using product categories from cultural mapping
+    4. validateRecommendations - ALWAYS validate business logic of recommendations
+    5. If validation shows issues (good_count < 3) - use refineRecommendations with improvement criteria
+    6. Repeat steps 4-5 until recommendations pass validation OR max 3 iterations
+    7. Only then provide final recommendations to user
 
-Key guidelines:
-- Focus on practical, actionable product suggestions
-- Explain the data-driven rationale behind each recommendation
-- Highlight potential revenue impact
-- Suggest specific product categories or brands when possible
-- Be encouraging about growth opportunities while being realistic
-- When you find gaps, suggest specific items like "matcha soda and Japanese cookies" rather than just categories
+    CULTURAL TO PRODUCT MAPPING:
+    When using mapCulturalToProducts, follow this analysis process:
 
-Sample interaction flow:
-1. User uploads CSV with columns: sku_id, tags, qty, margin
-2. User provides store location
-3. You analyze local tastes and find gaps
-4. You present top missing products with rationale
+    Step 1: Analyze cultural signals
+    - Review popular places' specialties and keywords
+    - Identify dominant culinary cultures and price levels
+    - Note neighborhood characteristics (tourist, business, residential)
 
-Demo scenario: Brooklyn coffee shop should add matcha products, Japanese pastries, Korean snacks, bubble tea, plant-based options, and artisanal items based on local cultural preferences.
+    Step 2: Apply store compatibility filter
+    - Coffee shop: beverages, pastries, grab-and-go items, complementary snacks
+    - Convenience store: quick essentials, impulse buys, everyday needs
+    - Bookstore: quiet snacks, beverages, gift items
 
-If users haven't provided required data (sales CSV + location), guide them to upload it first. There are demo buttons available for Brooklyn coffee shop data.
+    Step 3: Generate specific product categories
+    - Transform cultural insights into actionable products
+    - Consider price point appropriateness for the area
+    - Ensure products complement the store's primary business
+    - Be specific: "Matcha lattes and Japanese pastries" not "Asian products"
 
-When analyzing gaps, always call analyzeLocation first with lat/long, then call findTasteGaps with the results. Always use specific product suggestions and revenue projections.
+    Think through your reasoning: "I see [cultural signal] which suggests [customer preference], so for a [store type] I recommend [specific products] because [business logic]."
 
-Always be helpful, data-driven, and focused on business growth opportunities.`,
+    VALIDATION CRITERIA - Recommendations must pass:
+    - Store type compatibility (no alcohol in coffee shops)
+    - No direct competition nearby (no souvenirs near museums)
+    - Realistic profit margins and demand
+    - Reasonable implementation complexity
+    - Appropriate for local demographics
+
+    DECISION MAKING - You are autonomous:
+    - Analyze your own outputs critically
+    - Identify business logic problems independently
+    - Iterate until recommendations make commercial sense
+    - Explain your reasoning process to user
+    - Never give recommendations without successful validation
+
+    EXAMPLE GOOD REASONING:
+    "Found gap in Japanese products. Validating: this is coffee shop, matcha fits well. No Asian stores nearby. Good margins. Validation passed - presenting recommendations."
+
+    EXAMPLE BAD REASONING:
+    "Near museum, suggesting souvenirs. Validation failed - direct competition! Refining recommendations to focus on beverages and snacks instead of souvenirs."
+
+    Be thorough, business-focused, and always validate before final output.`,
   })
 
   return result.toDataStreamResponse()
