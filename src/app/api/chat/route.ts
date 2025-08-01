@@ -812,7 +812,7 @@ export async function POST(req: Request) {
       }),
     },
 
-    system: `You are TasteGap Scout. Find profitable product gaps for retailers through cultural analysis.
+    system: `You are ShelfSense. Find profitable product gaps for retailers through cultural analysis.
 
 <workflow>
 1. **analyzeLocation** - Get Qloo cultural data

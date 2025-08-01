@@ -1,4 +1,4 @@
-# TasteGap Scout
+# ShelfSense
 
 AI tool that flags products you don't sell yet but your local customers are statistically primed to buy.
 
@@ -6,7 +6,7 @@ AI tool that flags products you don't sell yet but your local customers are stat
 
 Imagine you run a small store. You already know what people bought last week — it's in your sales sheet. But what if there's cool stuff people would love, but you've never stocked it?
 
-That's where TasteGap Scout helps. It's like a magic scout telling you what's missing on your shelf.
+That's where ShelfSense helps. It's like a magic scout telling you what's missing on your shelf.
 
 ## How It Works
 

@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'TasteGap Scout',
+  title: 'ShelfSense',
   description:
     "AI tool that flags products you don't sell yet but your local customers are primed to buy",
 }
