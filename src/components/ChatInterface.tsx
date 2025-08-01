@@ -55,6 +55,8 @@ export function ChatInterface() {
     const file = event.target.files?.[0]
     if (!file) return
 
+    console.log('🫔 file', file)
+
     Papa.parse(file, {
       header: true,
       complete: (results) => {
@@ -70,6 +72,8 @@ export function ChatInterface() {
             margin: parseFloat(row.margin || '1.0'),
           }))
           .filter((item) => item.sku_id && item.tags.length > 0)
+
+        console.log('🫔 parsedData', parsedData)
 
         setSalesData(parsedData)
         setCsvUploaded(true)
@@ -100,14 +104,6 @@ export function ChatInterface() {
       (storeLocation.latitude && storeLocation.longitude)
     ) {
       setLocationSet(true)
-      // const locationStr =
-      //   storeLocation.address ||
-      //   `${storeLocation.latitude}, ${storeLocation.longitude}`
-
-      // append({
-      //   role: 'user',
-      //   content: `My store location is: ${locationStr}. Please analyze taste gaps for my local market.`,
-      // })
     }
   }
 
@@ -375,93 +371,25 @@ export function ChatInterface() {
                   <div className="text-center">
                     <button
                       onClick={() => {
-                        // Load demo data
-                        fetch('/brooklyn-coffee-demo.csv')
-                          .then((response) => response.text())
-                          .then((csvText) => {
-                            Papa.parse(csvText, {
-                              header: true,
-                              complete: (results) => {
-                                const parsedData: SalesData[] = (
-                                  results.data as Record<
-                                    string,
-                                    string
-                                  >[]
-                                )
-                                  .map((row) => ({
-                                    sku_id:
-                                      row.sku_id ||
-                                      row.SKU ||
-                                      row.sku,
-                                    tags: (row.tags || '')
-                                      .split(',')
-                                      .map((tag: string) =>
-                                        tag.trim().toLowerCase()
-                                      ),
-                                    qty: parseInt(
-                                      row.qty || row.quantity || '0'
-                                    ),
-                                    margin: parseFloat(
-                                      row.margin || '1.0'
-                                    ),
-                                  }))
-                                  .filter(
-                                    (item) =>
-                                      item.sku_id &&
-                                      item.tags.length > 0
-                                  )
+                        setIsFormSubmitted(true)
 
-                                setSalesData(parsedData)
-                                setCsvUploaded(true)
+                        const locationStr =
+                          `${storeLocation.latitude}, ${storeLocation.longitude}` ||
+                          storeLocation.address
 
-                                // Set Brooklyn location
-                                setStoreLocation({
-                                  latitude: 40.6782,
-                                  longitude: -73.9442,
-                                  address: 'Brooklyn, NY',
-                                })
-                                setLocationSet(true)
-                                setIsFormSubmitted(true)
+                        console.log('locationStr', locationStr)
 
-                                const locationStr =
-                                  `${storeLocation.latitude}, ${storeLocation.longitude}` ||
-                                  storeLocation.address
-
-                                console.log(
-                                  'locationStr',
-                                  locationStr
-                                )
-
-                                // append({
-                                //   role: 'user',
-                                //   content: `My store location is: ${locationStr}. Please analyze taste gaps for my local market.`,
-                                // })
-
-                                // append({
-                                //   role: 'user',
-                                //   content: `I've uploaded my sales data with ${
-                                //     salesData.length
-                                //   } products. Here's a sample: ${JSON.stringify(
-                                //     salesData.slice(0, 5),
-                                //     null,
-                                //     2
-                                //   )}`,
-                                // })
-
-                                append({
-                                  role: 'user',
-                                  // content: `I've loaded the Brooklyn coffee shop demo with ${parsedData.length} products and set location to Brooklyn, NY. Please analyze taste gaps for my local market.`,
-                                  content: `My store location is: ${locationStr}. I've uploaded my sales data with ${
-                                    salesData.length
-                                  } products. Here's a sample: ${JSON.stringify(
-                                    salesData.slice(0, 5),
-                                    null,
-                                    2
-                                  )}. Please analyze taste gaps for my local market.`,
-                                })
-                              },
-                            })
-                          })
+                        append({
+                          role: 'user',
+                          // content: `I've loaded the Brooklyn coffee shop demo with ${parsedData.length} products and set location to Brooklyn, NY. Please analyze taste gaps for my local market.`,
+                          content: `My store location is: ${locationStr}. I've uploaded my sales data with ${
+                            salesData.length
+                          } products. Here's a sample: ${JSON.stringify(
+                            salesData,
+                            null,
+                            2
+                          )}. Please analyze taste gaps for my local market.`,
+                        })
                       }}
                       className="w-full px-8 py-4 bg-gradient-to-r from-green-600 to-blue-600 text-white rounded-lg hover:from-green-700 hover:to-blue-700 flex items-center justify-center gap-3 font-semibold text-lg shadow-lg"
                     >

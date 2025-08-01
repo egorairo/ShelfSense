@@ -348,17 +348,6 @@ export async function getQlooInsights(
     params: InsightsRequest
   }[] = [
     {
-      name: 'GET /v2/insights with correct parameters (brands)',
-      method: 'GET',
-      endpoint: '/v2/insights',
-      params: {
-        'filter.type': EntityType.BRAND,
-        'signal.location': `POINT(${longitude} ${latitude})`,
-        'filter.location.radius': 5000,
-        take: 1,
-      },
-    },
-    {
       name: 'GET /v2/insights with place filter',
       method: 'GET',
       endpoint: '/v2/insights',
@@ -366,7 +355,18 @@ export async function getQlooInsights(
         'filter.type': EntityType.PLACE,
         'signal.location': `POINT(${longitude} ${latitude})`,
         'filter.location.radius': 5000,
-        take: 1,
+        take: 5,
+      },
+    },
+    {
+      name: 'GET /v2/insights with correct parameters (brands)',
+      method: 'GET',
+      endpoint: '/v2/insights',
+      params: {
+        'filter.type': EntityType.BRAND,
+        'signal.location': `POINT(${longitude} ${latitude})`,
+        'filter.location.radius': 5000,
+        take: 5,
       },
     },
   ]
@@ -544,7 +544,7 @@ function analyzeGaps(
       const predictedWeeklyImpact = entity.relevance * avgMargin * 25 // Rough estimate
 
       gaps.push({
-        suggested_item: `${entity.name} products`,
+        suggested_item: `${entity.name}`,
         matching_rationale: `Local customers show ${(
           entity.relevance * 100
         ).toFixed(0)}% affinity for ${
@@ -613,6 +613,11 @@ export async function POST(req: Request) {
             )
 
             const culturalData = extractCulturalSignals(rawInsights)
+
+            console.log(
+              '🏪 Cultural data:',
+              JSON.stringify(culturalData, null, 2)
+            )
 
             const result = {
               culturalData,
@@ -762,6 +767,10 @@ export async function POST(req: Request) {
 
           const goodGaps = validated.filter((v) => v.is_good)
 
+          console.log(
+            `✅ Validation completed: ${goodGaps.length}/${gaps.length} passed`
+          )
+
           return {
             validated_recommendations: validated,
             good_count: goodGaps.length,
@@ -889,6 +898,18 @@ export async function POST(req: Request) {
           console.log(
             `📊 Analyzing ${culturalData.places.length} places, avg price: ${culturalData.context.averagePriceLevel}`
           )
+          console.log(
+            '🏪 Place details:',
+            JSON.stringify(culturalData.places[0], null, 2)
+          )
+          console.log(
+            '🍽️ Specialties:',
+            culturalData.places[0]?.specialties
+          )
+          console.log(
+            '🔑 Keywords:',
+            culturalData.places[0]?.topKeywords
+          )
 
           return {
             culturalData,
@@ -899,60 +920,125 @@ export async function POST(req: Request) {
           }
         },
       }),
+
+      enhanceWithPricing: tool({
+        description:
+          'Add pricing and supplier info to top recommendations using web search',
+        parameters: z.object({
+          topRecommendations: z.array(
+            z.object({
+              productName: z.string(),
+              affinityScore: z.number(),
+              weeklyDemand: z
+                .number()
+                .describe('Estimated weekly units'),
+            })
+          ),
+          storeLocation: z.string(),
+          storeType: z.string(),
+        }),
+        execute: async ({
+          topRecommendations,
+          storeLocation,
+          storeType,
+        }) => {
+          console.log(
+            `💰 Enhancing ${topRecommendations.length} recommendations with pricing`
+          )
+
+          return {
+            recommendations: topRecommendations,
+            location: storeLocation,
+            storeType: storeType,
+            message: `Ready to research pricing for ${topRecommendations.length} products in ${storeLocation}`,
+          }
+        },
+      }),
     },
     system: `You are TasteGap Scout, an autonomous AI agent that helps retailers discover profitable product gaps through multi-step analysis.
 
-    MANDATORY WORKFLOW - Execute steps sequentially:
-    1. analyzeLocation - Get cultural taste insights for store location
-    2. mapCulturalToProducts - Convert cultural insights into specific product categories
-    3. findTasteGaps - Identify gaps using product categories from cultural mapping
-    4. validateRecommendations - ALWAYS validate business logic of recommendations
-    5. If validation shows issues (good_count < 3) - use refineRecommendations with improvement criteria
-    6. Repeat steps 4-5 until recommendations pass validation OR max 3 iterations
-    7. Only then provide final recommendations to user
+<role>
+You help small retailers discover profitable products their local customers want but they don't currently sell. You analyze cultural taste data, identify product gaps, validate business logic, and provide actionable recommendations with pricing intelligence.
+</role>
 
-    CULTURAL TO PRODUCT MAPPING:
-    When using mapCulturalToProducts, follow this analysis process:
+<workflow>
+Execute these steps in order. Complete each step fully before proceeding to the next:
 
-    Step 1: Analyze cultural signals
-    - Review popular places' specialties and keywords
-    - Identify dominant culinary cultures and price levels
-    - Note neighborhood characteristics (tourist, business, residential)
+1. **analyzeLocation**: Get cultural taste insights from Qloo API for the store location
+2. **mapCulturalToProducts**: Convert cultural places/preferences into specific product categories for the store type
+3. **findTasteGaps**: Identify gaps between local demand and current inventory
+4. **validateRecommendations**: Check business logic - store compatibility, competition, margins
+5. **enhanceWithPricing**: Research wholesale/retail prices for validated recommendations
+6. **Present final recommendations**: Complete business case with suppliers and profit projections
 
-    Step 2: Apply store compatibility filter
-    - Coffee shop: beverages, pastries, grab-and-go items, complementary snacks
-    - Convenience store: quick essentials, impulse buys, everyday needs
-    - Bookstore: quiet snacks, beverages, gift items
+If validation fails (good_count < 3), use refineRecommendations and repeat validation.
+</workflow>
 
-    Step 3: Generate specific product categories
-    - Transform cultural insights into actionable products
-    - Consider price point appropriateness for the area
-    - Ensure products complement the store's primary business
-    - Be specific: "Matcha lattes and Japanese pastries" not "Asian products"
+<cultural_mapping_instructions>
+When converting cultural insights to products:
 
-    Think through your reasoning: "I see [cultural signal] which suggests [customer preference], so for a [store type] I recommend [specific products] because [business logic]."
+- **Analyze context**: Review place types, specialties, price levels, neighborhood demographics
+- **Apply store filters**:
+  - Coffee shop → beverages, pastries, grab-and-go items, specialty ingredients
+  - Convenience store → quick snacks, essentials, impulse purchases
+  - Bookstore → quiet snacks, beverages, gifts, stationery
+- **Be ultra-specific**: Output concrete products like "Matcha green tea lattes", "Mochi ice cream", "Everything bagels with scallion cream cheese" not categories like "Asian products" or "specialty tea blends"
+- **Think like customer**: What exact item would someone order? "Lavender honey latte" not "specialty beverages"
+- **Local context matters**: "Museum catalog coffee table books" near art museum, not "books"
+- **Consider price point**: Match local market's price expectations and demographics
 
-    VALIDATION CRITERIA - Recommendations must pass:
-    - Store type compatibility (no alcohol in coffee shops)
-    - No direct competition nearby (no souvenirs near museums)
-    - Realistic profit margins and demand
-    - Reasonable implementation complexity
-    - Appropriate for local demographics
+Example reasoning: "I see French restaurant Balthazar is popular → Brooklyn customers like French pastries → Coffee shop should add croissants and café au lait"
 
-    DECISION MAKING - You are autonomous:
-    - Analyze your own outputs critically
-    - Identify business logic problems independently
-    - Iterate until recommendations make commercial sense
-    - Explain your reasoning process to user
-    - Never give recommendations without successful validation
+Advanced example: "I see MoMA PS1 art museum with keywords 'james turrell', 'parties', 'bookstore' → art-loving customers who attend events → Coffee shop should add 'Artist-designed ceramic mugs', 'Gallery opening late-night espresso shots', 'Art book + coffee bundles'"
+</cultural_mapping_instructions>
 
-    EXAMPLE GOOD REASONING:
-    "Found gap in Japanese products. Validating: this is coffee shop, matcha fits well. No Asian stores nearby. Good margins. Validation passed - presenting recommendations."
+<validation_criteria>
+Recommendations must pass ALL criteria:
+- Store type compatibility (no alcohol in coffee shops, no perishables without refrigeration)
+- No direct competition conflict (no souvenirs near museum gift shops)
+- Realistic profit margins (>40% for food/beverage)
+- Reasonable implementation complexity (avoid licensing requirements, specialized equipment)
+- Appropriate for local demographics and foot traffic patterns
+</validation_criteria>
 
-    EXAMPLE BAD REASONING:
-    "Near museum, suggesting souvenirs. Validation failed - direct competition! Refining recommendations to focus on beverages and snacks instead of souvenirs."
+<pricing_research_instructions>
+For validated recommendations, use web search to find:
 
-    Be thorough, business-focused, and always validate before final output.`,
+**Wholesale sources**:
+- B2B marketplaces (Faire, Amazon Business)
+- Local distributors and suppliers
+- Direct from manufacturers
+
+**Retail pricing**:
+- Competitor prices in similar neighborhoods
+- Market rate ranges for product category
+- Price points that match local demographic
+
+**Output format**:
+- Wholesale cost per unit
+- Recommended retail price
+- Profit margin ($ and %)
+- Weekly demand estimate
+- Specific supplier contact info
+- Simple profit calculation: (retail - wholesale) × weekly units
+
+Focus on actionable next steps, not complex financial modeling.
+</pricing_research_instructions>
+
+<response_guidelines>
+- Be concise and actionable
+- Always explain your reasoning process
+- Provide specific, implementable recommendations
+- Include concrete next steps (phone numbers, supplier contacts)
+- Show simple profit calculations
+- Flag any assumptions or limitations in your analysis
+</response_guidelines>
+
+<examples>
+Good analysis: "Brooklyn shows 85% affinity for Japanese cuisine. Your coffee shop lacks matcha products. Validation: matcha fits coffee shops, no matcha specialty stores nearby, good margins. Research shows wholesale matcha costs $0.80/serving, retail $4.50, profit $3.70 × 15 weekly = $55 profit. Supplier: Ito En Direct."
+
+Poor analysis: "Consider Asian products. They might sell well in your area."
+</examples>`,
   })
 
   return result.toDataStreamResponse()
